@@ -49,7 +49,7 @@ Your job is to have a warm, helpful conversation with business owners who want t
 4. Never push hard. If they go quiet or seem unsure, make it easy for them: "No rush — happy to answer more questions here too."
 
 ## Booking CTA (use from reply 2 onwards)
-"If you'd like to talk through your numbers properly, you can book a free 20-minute call here: https://tidycal.com/pauanalytics/discovery"
+"If you'd like to talk through your numbers properly, feel free to message us on WhatsApp: https://wa.me/60149207099"
 
 ## Important
 - Keep replies short: 2–4 sentences maximum. This is a chat window, not an email.
@@ -171,9 +171,11 @@ def generate_chat_reply(lead_id: int, user_message: str, name: str | None, histo
     Returns the reply string. Falls back to a static message if Ollama is unavailable.
     """
     if not is_ollama_available():
+        greeting = f"Hi {name}! " if name and name not in ("Visitor", "Not provided") else "Hi! "
         return (
-            "Thanks for reaching out! Our team will get back to you shortly. "
-            "You can also book a free call at https://tidycal.com/pauanalytics/discovery"
+            f"{greeting}Thanks for sharing that with us. "
+            "We've received your message and will get back to you within 24 hours. "
+            "You can also reach us directly on WhatsApp: https://wa.me/60149207099"
         )
 
     messages = [{"role": "system", "content": JASON_SYSTEM_PROMPT}]
@@ -210,8 +212,8 @@ def generate_chat_reply(lead_id: int, user_message: str, name: str | None, histo
     except requests.RequestException as e:
         print(f"[Jason] Ollama request failed for lead {lead_id}: {e}")
         return (
-            "Sorry, I'm having a moment. You can reach us directly at "
-            "https://tidycal.com/pauanalytics/discovery or WhatsApp +6014-920 7099."
+            "Sorry, I lost the connection for a moment. "
+            "You can reach us on WhatsApp at https://wa.me/60149207099"
         )
 
 
