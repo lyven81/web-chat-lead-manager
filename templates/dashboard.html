@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Web Chat Lead Manager — Pau Analytics</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="header-title">
+      <span class="header-icon">💬</span>
+      <div>
+        <h1>Web Chat Lead Manager</h1>
+        <p class="header-sub">Pau Analytics — Lead Dashboard</p>
+      </div>
+    </div>
+    <div class="header-upload">
+      <form id="upload-form" enctype="multipart/form-data">
+        <label for="file-input" class="upload-btn">⬆ Upload Reference File</label>
+        <input type="file" id="file-input" name="file" hidden />
+      </form>
+      <span id="upload-status" class="upload-status"></span>
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <!-- Summary Bar -->
+  <section class="summary-bar">
+    <div class="stat-card">
+      <div class="stat-number">{{ stats.total }}</div>
+      <div class="stat-label">Total Leads</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number">{{ stats.this_week }}</div>
+      <div class="stat-label">This Week</div>
+    </div>
+    <div class="stat-card highlight">
+      <div class="stat-number">{{ stats.needs_followup }}</div>
+      <div class="stat-label">Needs Follow-up</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number">{{ stats.ch_a_week }}</div>
+      <div class="stat-label">CH-A This Week</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number">{{ stats.ch_b_week }}</div>
+      <div class="stat-label">CH-B This Week</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number">{{ stats.ch_w_week }}</div>
+      <div class="stat-label">CH-W This Week</div>
+    </div>
+  </section>
+
+  <!-- Blog Performance -->
+  {% if stats.blog_performance %}
+  <section class="blog-panel">
+    <h2>Blog Performance</h2>
+    <div class="blog-bars">
+      {% for blog in stats.blog_performance %}
+      <div class="blog-bar-row">
+        <span class="blog-slug">{{ blog.blog_slug }}</span>
+        <div class="blog-bar-track">
+          <div class="blog-bar-fill" style="width: {{ [blog.count * 30, 300] | min }}px"></div>
+        </div>
+        <span class="blog-count">{{ blog.count }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  <!-- Filters -->
+  <section class="filters">
+    <input type="text" id="search" placeholder="Search name or challenge..." oninput="filterLeads()" />
+    <select id="filter-source" onchange="filterLeads()">
+      <option value="">All Sources</option>
+      <option value="CH-A">CH-A (Landing Page)</option>
+      <option value="CH-B">CH-B (Blog)</option>
+      <option value="CH-W">CH-W (Chat Widget)</option>
+    </select>
+    <select id="filter-status" onchange="filterLeads()">
+      <option value="">All Statuses</option>
+      <option value="New">New</option>
+      <option value="Qualifying">Qualifying</option>
+      <option value="Qualified">Qualified</option>
+      <option value="Follow-up sent">Follow-up sent</option>
+      <option value="Closed">Closed</option>
+      <option value="Lost">Lost</option>
+    </select>
+    <button onclick="exportCSV()" class="export-btn">⬇ Export CSV</button>
+  </section>
+
+  <!-- Lead Table -->
+  <section class="table-section">
+    <table id="leads-table">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Name</th>
+          <th>Contact</th>
+          <th>Challenge</th>
+          <th>Source</th>
+          <th>Status</th>
+          <th>Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for lead in leads %}
+        <tr class="lead-row" data-source="{{ lead.source }}" data-status="{{ lead.status }}" data-id="{{ lead.id }}">
+          <td class="col-date">{{ lead.date }}</td>
+          <td class="col-name">{{ lead.name }}</td>
+          <td class="col-contact">
+            {% if lead.whatsapp and lead.whatsapp != 'via-web' %}
+              <a href="https://wa.me/{{ lead.whatsapp }}" target="_blank" class="wa-link">
+                {{ lead.whatsapp }}
+              </a>
+            {% else %}
+              <span class="via-web-tag">Via Web</span>
+            {% endif %}
+          </td>
+          <td class="col-challenge">{{ lead.challenge }}</td>
+          <td class="col-source">
+            <span class="badge badge-{{ lead.source | lower | replace('-','') }}">{{ lead.source }}</span>
+            {% if lead.blog_slug %}
+            <br><small class="blog-tag">{{ lead.blog_slug }}</small>
+            {% endif %}
+          </td>
+          <td class="col-status">
+            <select class="status-select" onchange="updateStatus({{ lead.id }}, this.value)">
+              {% for s in ['New', 'Qualifying', 'Qualified', 'Follow-up sent', 'Closed', 'Lost'] %}
+              <option value="{{ s }}" {% if s == lead.status %}selected{% endif %}>{{ s }}</option>
+              {% endfor %}
+            </select>
+          </td>
+          <td class="col-notes">
+            <input
+              type="text"
+              class="notes-input"
+              value="{{ lead.notes or '' }}"
+              placeholder="Add note..."
+              onblur="updateNotes({{ lead.id }}, this.value)"
+            />
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% if not leads %}
+    <div class="empty-state">No leads yet. Leads will appear here when visitors submit the web chat widget or landing page form.</div>
+    {% endif %}
+  </section>
+
+</main>
+
+<script>
+  function filterLeads() {
+    const search = document.getElementById('search').value.toLowerCase();
+    const source = document.getElementById('filter-source').value;
+    const status = document.getElementById('filter-status').value;
+    document.querySelectorAll('.lead-row').forEach(row => {
+      const text = row.textContent.toLowerCase();
+      const matchSearch = !search || text.includes(search);
+      const matchSource = !source || row.dataset.source === source;
+      const matchStatus = !status || row.dataset.status === status;
+      row.style.display = (matchSearch && matchSource && matchStatus) ? '' : 'none';
+    });
+  }
+
+  async function updateStatus(leadId, newStatus) {
+    const row = document.querySelector(`tr[data-id="${leadId}"]`);
+    if (row) row.dataset.status = newStatus;
+    await fetch(`/api/leads/${leadId}`, {
+      method: 'PATCH',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({status: newStatus})
+    });
+  }
+
+  async function updateNotes(leadId, notes) {
+    await fetch(`/api/leads/${leadId}`, {
+      method: 'PATCH',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({notes: notes})
+    });
+  }
+
+  document.getElementById('file-input').addEventListener('change', async function() {
+    const file = this.files[0];
+    if (!file) return;
+    const formData = new FormData();
+    formData.append('file', file);
+    const status = document.getElementById('upload-status');
+    status.textContent = 'Uploading...';
+    const res = await fetch('/api/upload', {method: 'POST', body: formData});
+    const data = await res.json();
+    status.textContent = data.status === 'uploaded' ? `✓ ${data.filename} uploaded` : 'Upload failed';
+    setTimeout(() => status.textContent = '', 3000);
+    this.value = '';
+  });
+
+  function exportCSV() {
+    const rows = [];
+    const headers = ['Date', 'Name', 'Contact', 'Challenge', 'Source', 'Status', 'Notes'];
+    rows.push(headers.join(','));
+    document.querySelectorAll('.lead-row').forEach(row => {
+      if (row.style.display === 'none') return;
+      const cells = [
+        row.querySelector('.col-date').textContent.trim(),
+        row.querySelector('.col-name').textContent.trim(),
+        row.querySelector('.col-contact').textContent.trim(),
+        row.querySelector('.col-challenge').textContent.trim(),
+        row.querySelector('.col-source').textContent.trim().split('\n')[0].trim(),
+        row.querySelector('.status-select').value,
+        row.querySelector('.notes-input').value
+      ].map(c => `"${c.replace(/"/g, '""')}"`);
+      rows.push(cells.join(','));
+    });
+    const blob = new Blob([rows.join('\n')], {type: 'text/csv'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `pau-analytics-leads-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+  }
+
+  // Auto-refresh every 60 seconds
+  setTimeout(() => location.reload(), 60000);
+</script>
+
+</body>
+</html>
