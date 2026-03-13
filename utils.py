@@ -1,51 +1,66 @@
 """
 utils.py — Shared utility functions
 Web Chat Lead Manager
-Replaces Telegram alert with Gmail (Google Workspace) alert.
+Sends Gmail alerts via Resend HTTP API (Railway blocks SMTP outbound connections).
 """
 
 import os
-import smtplib
-import ssl
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+import requests
 from dotenv import load_dotenv
 
 load_dotenv()
 
-GMAIL_USER = os.getenv("GMAIL_USER")
-GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
+RESEND_API_KEY = os.getenv("RESEND_API_KEY")
+GMAIL_USER = os.getenv("GMAIL_USER")  # used as the "to" address
 
 
 def send_email_alert(subject: str, html_body: str) -> bool:
     """
-    Send an HTML email alert to yourself via Gmail SMTP.
-    Uses SSL on port 465 — requires a Gmail App Password (not your login password).
+    Send an HTML email alert via Resend HTTP API.
+    Resend is used because Railway blocks outbound SMTP connections.
 
-    To generate an App Password:
-    Google Account → Security → 2-Step Verification → App Passwords
+    Setup:
+      1. Sign up free at resend.com
+      2. Create an API key
+      3. Set RESEND_API_KEY in Railway environment variables
+      4. Set GMAIL_USER to your email address (used as recipient)
+
+    Free tier: 100 emails/day, 3,000/month — sufficient for lead alerts.
     """
-    if not GMAIL_USER or not GMAIL_APP_PASSWORD:
-        print("[Gmail] GMAIL_USER or GMAIL_APP_PASSWORD not set — skipping alert.")
+    if not RESEND_API_KEY:
+        print("[Email] RESEND_API_KEY not set — skipping alert.")
+        return False
+
+    to_address = GMAIL_USER or os.getenv("RESEND_TO")
+    if not to_address:
+        print("[Email] No recipient address set (GMAIL_USER or RESEND_TO) — skipping alert.")
         return False
 
     try:
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = subject
-        msg["From"] = GMAIL_USER
-        msg["To"] = GMAIL_USER  # sends to yourself
-        msg.attach(MIMEText(html_body, "html"))
+        response = requests.post(
+            "https://api.resend.com/emails",
+            headers={
+                "Authorization": f"Bearer {RESEND_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "from": "Pau Analytics Leads <onboarding@resend.dev>",
+                "to": [to_address],
+                "subject": subject,
+                "html": html_body,
+            },
+            timeout=15,
+        )
 
-        context = ssl.create_default_context()
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:
-            server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
-            server.sendmail(GMAIL_USER, GMAIL_USER, msg.as_string())
-
-        print(f"[Gmail] Alert sent: {subject}")
-        return True
+        if response.status_code in (200, 201):
+            print(f"[Email] Alert sent: {subject}")
+            return True
+        else:
+            print(f"[Email] Resend API error {response.status_code}: {response.text}")
+            return False
 
     except Exception as e:
-        print(f"[Gmail] Failed to send alert: {e}")
+        print(f"[Email] Failed to send alert: {e}")
         return False
 
 
@@ -88,7 +103,7 @@ def build_lead_alert_html(name, challenge, source, slug, phone, timestamp, score
         <hr style="margin:20px 0; border:none; border-top:1px solid #eee;">
         <p style="color:#888;font-size:0.85em;">
             Follow up today via WhatsApp: <a href="https://wa.me/60149207099">+6014-920 7099</a><br>
-            View dashboard: <a href="https://web-chat-lead-manager.railway.app">Lead Dashboard</a>
+            View dashboard: <a href="https://web-chat-lead-manager-production.up.railway.app">Lead Dashboard</a>
         </p>
     </div>
     """
